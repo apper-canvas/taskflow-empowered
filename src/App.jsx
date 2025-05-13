@@ -129,9 +129,8 @@ function App() {
         theme={darkMode ? "dark" : "light"}
         toastClassName="font-sans text-sm"
       />
-    </>
+    </AuthContext.Provider>
   );
 }
 
 export default App;
-    </AuthContext.Provider>
