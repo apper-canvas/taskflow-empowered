@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import getIcon from '../utils/iconUtils';
+import { fetchTasks, createTask, updateTask, deleteTask } from '../services/taskService';
+import { useSelector } from 'react-redux';
 
 function MainFeature() {
   // Declare icon components
@@ -17,41 +19,7 @@ function MainFeature() {
   const ClockIcon = getIcon('Clock');
   const XIcon = getIcon('X');
   
-  // State for tasks
-  const [tasks, setTasks] = useState(() => {
-    // Load tasks from localStorage if available
-    const savedTasks = localStorage.getItem('tasks');
-    return savedTasks ? JSON.parse(savedTasks) : [
-      {
-        id: '1',
-        title: 'Complete project proposal',
-        description: 'Draft the initial proposal for the client meeting',
-        priority: 'high',
-        status: 'todo',
-        dueDate: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10), // 2 days from now
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: '2',
-        title: 'Review team presentations',
-        description: 'Provide feedback on quarterly presentations',
-        priority: 'medium',
-        status: 'in-progress',
-        dueDate: new Date(Date.now() + 86400000 * 5).toISOString().slice(0, 10), // 5 days from now
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: '3',
-        title: 'Update documentation',
-        description: 'Update the user guide with new features',
-        priority: 'low',
-        status: 'completed',
-        dueDate: new Date(Date.now() - 86400000 * 1).toISOString().slice(0, 10), // 1 day ago
-        completedAt: new Date().toISOString(),
-        createdAt: new Date(Date.now() - 86400000 * 3).toISOString() // 3 days ago
-      }
-    ];
-  });
+  const [tasks, setTasks] = useState([]);
   
   // State for new task form
   const [newTask, setNewTask] = useState({
@@ -71,20 +39,43 @@ function MainFeature() {
   const [sortBy, setSortBy] = useState('dueDate');
   const [sortDirection, setSortDirection] = useState('asc');
   
+  // Loading state
+  const [loading, setLoading] = useState(false);
+  
   // Ref for task input
   const taskInputRef = useRef(null);
   
-  // Save tasks to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-  }, [tasks]);
+  // Get user info from Redux
+  const { user } = useSelector(state => state.user);
   
-  // Focus the task input when component mounts
+  // Load tasks from backend
   useEffect(() => {
-    if (taskInputRef.current) {
-      taskInputRef.current.focus();
-    }
-  }, []);
+    const loadTasks = async () => {
+      try {
+        setLoading(true);
+        const tasksData = await fetchTasks({
+          sortBy: sortBy,
+          sortDirection: sortDirection
+        });
+        setTasks(tasksData);
+      } catch (error) {
+        console.error("Error loading tasks:", error);
+        toast.error("Failed to load tasks");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadTasks();
+  }, [sortBy, sortDirection]);
+  
+  // Filter tasks based on current filter
+  const filteredTasks = tasks.filter(task => {
+    if (filter === 'all') return true;
+    if (filter === 'completed') return task.status === 'completed';
+    if (filter === 'active') return task.status !== 'completed';
+    return true;
+  });
   
   // Handle input changes for new task
   const handleInputChange = (e) => {
@@ -107,39 +98,57 @@ function MainFeature() {
   // Add a new task
   const addTask = (e) => {
     e.preventDefault();
-    
+
     if (!newTask.title.trim()) {
       toast.error("Task title cannot be empty!");
       return;
     }
-    
-    const task = {
-      id: Date.now().toString(),
+
+    setLoading(true);
+    createTask({
       ...newTask,
-      status: 'todo',
-      createdAt: new Date().toISOString()
-    };
-    
-    setTasks(prev => [task, ...prev]);
-    setNewTask({
-      title: '',
-      description: '',
-      priority: 'medium',
-      dueDate: new Date().toISOString().slice(0, 10)
-    });
-    
-    toast.success("Task added successfully!");
-    
-    // Focus back on the input
-    if (taskInputRef.current) {
-      taskInputRef.current.focus();
-    }
+      status: 'todo'
+    })
+      .then(newTask => {
+        setTasks(prev => [newTask, ...prev]);
+        setNewTask({
+          title: '',
+          description: '',
+          priority: 'medium',
+          dueDate: new Date().toISOString().slice(0, 10)
+        });
+        
+        toast.success("Task added successfully!");
+        
+        // Focus back on the input
+        if (taskInputRef.current) {
+          taskInputRef.current.focus();
+        }
+      })
+      .catch(error => {
+        console.error("Error adding task:", error);
+        toast.error("Failed to add task");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
   
   // Delete a task
   const deleteTask = (id) => {
-    setTasks(prev => prev.filter(task => task.id !== id));
-    toast.success("Task deleted successfully!");
+    setLoading(true);
+    deleteTask(id)
+      .then(() => {
+        setTasks(prev => prev.filter(task => task.id !== id));
+        toast.success("Task deleted successfully!");
+      })
+      .catch(error => {
+        console.error("Error deleting task:", error);
+        toast.error("Failed to delete task");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
   
   // Start editing a task
@@ -158,36 +167,59 @@ function MainFeature() {
       toast.error("Task title cannot be empty!");
       return;
     }
-    
-    setTasks(prev => 
-      prev.map(task => 
-        task.id === editingTask.id 
-          ? { ...editingTask, updatedAt: new Date().toISOString() } 
-          : task
-      )
-    );
-    
-    setEditingTask(null);
-    toast.success("Task updated successfully!");
+
+    setLoading(true);
+    updateTask({
+      ...editingTask,
+      updatedAt: new Date().toISOString()
+    })
+      .then(updatedTask => {
+        setTasks(prev => 
+          prev.map(task => 
+            task.id === updatedTask.id ? updatedTask : task
+          )
+        );
+        
+        setEditingTask(null);
+        toast.success("Task updated successfully!");
+      })
+      .catch(error => {
+        console.error("Error updating task:", error);
+        toast.error("Failed to update task");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
   
   // Toggle task status
   const toggleTaskStatus = (id) => {
-    setTasks(prev => 
-      prev.map(task => {
-        if (task.id === id) {
-          const newStatus = task.status === 'completed' ? 'todo' : 'completed';
-          return {
-            ...task,
-            status: newStatus,
-            completedAt: newStatus === 'completed' ? new Date().toISOString() : null
-          };
-        }
-        return task;
+    const taskToUpdate = tasks.find(task => task.id === id);
+    if (!taskToUpdate) return;
+
+    const newStatus = taskToUpdate.status === 'completed' ? 'todo' : 'completed';
+    const updatedTask = {
+      ...taskToUpdate,
+      status: newStatus,
+      completedAt: newStatus === 'completed' ? new Date().toISOString() : null
+    };
+
+    setLoading(true);
+    updateTask(updatedTask)
+      .then(updatedTask => {
+        setTasks(prev => 
+          prev.map(task => task.id === id ? updatedTask : task)
+        );
+        
+        toast.info("Task status updated!");
       })
-    );
-    
-    toast.info("Task status updated!");
+      .catch(error => {
+        console.error("Error updating task status:", error);
+        toast.error("Failed to update task status");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
   
   // Get priority badge color
@@ -203,14 +235,6 @@ function MainFeature() {
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
     }
   };
-  
-  // Filter tasks based on current filter
-  const filteredTasks = tasks.filter(task => {
-    if (filter === 'all') return true;
-    if (filter === 'completed') return task.status === 'completed';
-    if (filter === 'active') return task.status !== 'completed';
-    return true;
-  });
   
   // Sort tasks
   const sortedTasks = [...filteredTasks].sort((a, b) => {
@@ -413,7 +437,17 @@ function MainFeature() {
           <span className="ml-2 text-sm font-normal text-surface-500 dark:text-surface-400">{sortedTasks.length} tasks</span>
         </h3>
         
-        {sortedTasks.length === 0 ? (
+        {loading ? (
+          <div className="card p-12 flex flex-col items-center justify-center text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4"></div>
+            <p className="text-lg font-medium text-surface-600 dark:text-surface-400">
+              Loading tasks...
+            </p>
+            <p className="text-sm text-surface-500 dark:text-surface-500 mt-1">
+              Please wait while we fetch your tasks.
+            </p>
+          </div>
+        ) : sortedTasks.length === 0 ? (
           <div className="card p-12 flex flex-col items-center justify-center text-center">
             <AlertIcon className="h-10 w-10 text-surface-400 dark:text-surface-600 mb-4" />
             <p className="text-lg font-medium text-surface-600 dark:text-surface-400">No tasks found</p>
