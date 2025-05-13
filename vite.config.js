@@ -12,14 +12,21 @@ export default defineConfig({
       timeout: 120000
     }
   },
+  cacheDir: '.vite',
   optimizeDeps: {
-    include: ['@reduxjs/toolkit', 'react-redux'],
+    include: [
+      '@reduxjs/toolkit', 
+      'react-redux', 
+      '@reduxjs/toolkit/query/react'
+    ],
     exclude: [],
     esbuildOptions: {
       target: 'es2020',
       define: {
         global: 'globalThis'
-      }
+      },
+      charset: 'utf8',
+      logLevel: 'info'
     },
     force: true,
     disabled: false
@@ -31,6 +38,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     sourcemap: true,
     rollupOptions: {
+      maxParallelFileOps: 3,
       output: {
         manualChunks: {
           'redux-vendor': ['@reduxjs/toolkit', 'react-redux']

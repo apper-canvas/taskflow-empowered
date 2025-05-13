@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@reduxjs/toolkit": "1.9.7",
+    "@reduxjs/toolkit": "1.9.5",
     "apexcharts": "^4.5.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^10.16.4",
